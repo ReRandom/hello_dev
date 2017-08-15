@@ -4,6 +4,7 @@
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include <linux/slab.h>
+#include <linux/cdev.h>
 #include <asm/uaccess.h>
 
 MODULE_LICENSE("GPL");
@@ -11,7 +12,11 @@ MODULE_LICENSE("GPLv2");
 MODULE_AUTHOR("Roman Ponomarenko <r.e.p@yandex.ru>");
 
 #define HELLO_VERSION "00"
-#define DEVICE_NAME "hello_dev"
+#define DEVICE_NAME "hello_dev_device"
+#define MODULE_NAME "hello_dev_module"
+#define DEVICE_FIRST 0
+#define DEVICE_COUNT 1
+static struct cdev hcdev;
 
 static int device_open(struct inode* inode, struct file* file);
 static int device_release(struct inode* inode, struct file* file);
@@ -33,21 +38,34 @@ static char *msg_ptr;
 
 static int __init hello_init(void)
 {
-	Major = register_chrdev(0, DEVICE_NAME, &hello_fops);
-	if(Major < 0)
+	dev_t dev;
+	int ret = alloc_chrdev_region(&dev, DEVICE_FIRST, DEVICE_COUNT, MODULE_NAME);
+	Major = MAJOR(dev);
+	if(ret < 0)
 	{
 		printk(KERN_ALERT "Registering char device failed with %d\n", Major);
-		return Major;
+		return ret;
+	}
+	cdev_init(&hcdev, &hello_fops);
+	hcdev.owner = THIS_MODULE;
+	//hcdev.ops = hello_fops;
+	ret = cdev_add(&hcdev, dev, DEVICE_COUNT);
+	if(ret < 0)
+	{
+		unregister_chrdev_region(MKDEV(Major, DEVICE_FIRST), DEVICE_COUNT);
+		printk( KERN_ERR "Can not add char device\n" );
+		return ret;
 	}
 	msg = kmalloc(15, GFP_KERNEL);
 	sprintf(msg, "Hello, world!\n");
-	printk(KERN_INFO "[hello_dev v%s] init\n", HELLO_VERSION);
+	printk(KERN_INFO "[hello_dev v%s] init %d:%d\n", HELLO_VERSION, MAJOR(dev), MINOR(dev));
 	return 0;
 }
 
 static void __exit hello_exit(void)
 {
-	unregister_chrdev(Major, DEVICE_NAME);
+	cdev_del(&hcdev);
+	unregister_chrdev_region(MKDEV(Major, DEVICE_FIRST), DEVICE_COUNT);
 	kfree(msg);
 	printk(KERN_INFO "[hello_dev v%s] exit\n", HELLO_VERSION);
 }
