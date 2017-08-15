@@ -1,14 +1,15 @@
 #include <linux/init.h>
 #include <linux/types.h>
+#include <linux/fs.h>
 #include <linux/module.h>
-#include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include <linux/slab.h>
 #include <linux/cdev.h>
+#include <linux/device.h>
 #include <asm/uaccess.h>
 
 MODULE_LICENSE("GPL");
-MODULE_LICENSE("GPLv2");
+MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Roman Ponomarenko <r.e.p@yandex.ru>");
 
 #define HELLO_VERSION "00"
@@ -16,7 +17,7 @@ MODULE_AUTHOR("Roman Ponomarenko <r.e.p@yandex.ru>");
 #define MODULE_NAME "hello_dev_module"
 #define DEVICE_FIRST 0
 #define DEVICE_COUNT 1
-static struct cdev hcdev;
+#define CLASS_NAME "hello_dev_class"
 
 static int device_open(struct inode* inode, struct file* file);
 static int device_release(struct inode* inode, struct file* file);
@@ -31,31 +32,32 @@ static struct file_operations hello_fops = {
 .write = device_write,
 };
 
-static int Major;
+static dev_t dev;
+static struct cdev hcdev;
+static struct class *devclass;
 static int device_is_open = 0;
 static char *msg;
 static char *msg_ptr;
 
 static int __init hello_init(void)
 {
-	dev_t dev;
 	int ret = alloc_chrdev_region(&dev, DEVICE_FIRST, DEVICE_COUNT, MODULE_NAME);
-	Major = MAJOR(dev);
 	if(ret < 0)
 	{
-		printk(KERN_ALERT "Registering char device failed with %d\n", Major);
+		printk(KERN_ALERT "Registering char device failed with %d\n", MAJOR(dev));
 		return ret;
 	}
 	cdev_init(&hcdev, &hello_fops);
 	hcdev.owner = THIS_MODULE;
-	//hcdev.ops = hello_fops;
 	ret = cdev_add(&hcdev, dev, DEVICE_COUNT);
 	if(ret < 0)
 	{
-		unregister_chrdev_region(MKDEV(Major, DEVICE_FIRST), DEVICE_COUNT);
+		unregister_chrdev_region(dev, DEVICE_COUNT);
 		printk( KERN_ERR "Can not add char device\n" );
 		return ret;
 	}
+	devclass = class_create(THIS_MODULE, CLASS_NAME);
+	device_create(devclass, NULL, dev, "%s", DEVICE_NAME);
 	msg = kmalloc(15, GFP_KERNEL);
 	sprintf(msg, "Hello, world!\n");
 	printk(KERN_INFO "[hello_dev v%s] init %d:%d\n", HELLO_VERSION, MAJOR(dev), MINOR(dev));
@@ -64,8 +66,10 @@ static int __init hello_init(void)
 
 static void __exit hello_exit(void)
 {
+	device_destroy(devclass, dev);
+	class_destroy(devclass);
 	cdev_del(&hcdev);
-	unregister_chrdev_region(MKDEV(Major, DEVICE_FIRST), DEVICE_COUNT);
+	unregister_chrdev_region(dev, DEVICE_COUNT);
 	kfree(msg);
 	printk(KERN_INFO "[hello_dev v%s] exit\n", HELLO_VERSION);
 }
