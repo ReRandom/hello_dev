@@ -8,6 +8,7 @@
 
 MODULE_LICENSE("GPL");
 MODULE_LICENSE("GPLv2");
+MODULE_AUTHOR("Roman Ponomarenko <r.e.p@yandex.ru>");
 
 #define HELLO_VERSION "00"
 #define DEVICE_NAME "hello_dev"
@@ -30,7 +31,7 @@ static int device_is_open = 0;
 static char *msg;
 static char *msg_ptr;
 
-static int hello_init(void)
+static int __init hello_init(void)
 {
 	Major = register_chrdev(0, DEVICE_NAME, &hello_fops);
 	if(Major < 0)
@@ -44,7 +45,7 @@ static int hello_init(void)
 	return 0;
 }
 
-static void hello_exit(void)
+static void __exit hello_exit(void)
 {
 	unregister_chrdev(Major, DEVICE_NAME);
 	kfree(msg);
